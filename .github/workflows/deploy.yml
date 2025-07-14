@@ -1,9 +1,9 @@
-name: Deploy Laravel to Elastic Beanstalk
+name: Deploy to Elastic Beanstalk
 
 on:
   push:
     branches:
-      - main
+      - main  # or your default branch
 
 jobs:
   deploy:
@@ -11,31 +11,45 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: 8.2
-          extensions: mbstring, bcmath, curl, dom, fileinfo, json, mysql, openssl, pdo, tokenizer, xml
-          coverage: none
+          extensions: mbstring, bcmath, curl, dom, fileinfo, openssl, tokenizer, xml, json
 
       - name: Install Composer dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader
+        run: composer install --prefer-dist --no-interaction --no-progress --optimize-autoloader
 
-      - name: Run Laravel build (optional)
-        run: php artisan config:cache
+      - name: Set file permissions
+        run: chmod -R 755 .
 
-      - name: Deploy to AWS Elastic Beanstalk
-        uses: einaregilsson/beanstalk-deploy@v21
-        with:
-          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          application_name: trendigle-api
-          environment_name: trendigle-api-env
-          region: us-east-1
-          version_label: ${{ github.sha }}
-          deployment_package: deploy.zip
+      - name: Zip application
+        run: zip -r deploy.zip . -x "*.git*" "node_modules/*" "tests/*" "storage/*" "vendor/*"
 
-      - name: Create ZIP archive
-        run: zip -r deploy.zip . -x "*.git*" "vendor/*" "node_modules/*" ".github/*"
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+
+      - name: Deploy to Elastic Beanstalk
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "${{ secrets.EB_APP_NAME }}" \
+            --version-label "ver-${{ github.run_id }}" \
+            --source-bundle S3Bucket="elasticbeanstalk-${{ secrets.AWS_REGION }}-${{ github.repository_owner }}",S3Key="trendigle-api/ver-${{ github.run_id }}.zip" \
+            --region "${{ secrets.AWS_REGION }}"
+
+          aws s3 cp deploy.zip s3://elasticbeanstalk-${{ secrets.AWS_REGION }}-${{ github.repository_owner }}/trendigle-api/ver-${{ github.run_id }}.zip \
+            --region "${{ secrets.AWS_REGION }}"
+
+          aws elasticbeanstalk update-environment \
+            --environment-name "${{ secrets.EB_ENV_NAME }}" \
+            --version-label "ver-${{ github.run_id }}" \
+            --region "${{ secrets.AWS_REGION }}"
