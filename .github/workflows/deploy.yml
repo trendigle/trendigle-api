@@ -10,34 +10,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: mbstring, bcmath, curl, dom, fileinfo, intl, json, mysql, pdo, tokenizer, xml, zip
-          tools: composer
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
 
-      - name: Install dependencies
-        run: |
-          composer install --no-dev --optimize-autoloader
+    - name: Install Dependencies
+      run: |
+        composer install --prefer-dist --no-progress --no-suggest --optimize-autoloader
 
-      - name: Set permissions
-        run: chmod -R 755 .
+    - name: Create deployment package
+      run: |
+        zip -r deploy.zip . -x "*.git*" "tests/*" "node_modules/*"
 
-      - name: Create ZIP deployment bundle
-        run: |
-          zip -r deploy.zip . -x '*.git*'
-
-      - name: Deploy to Elastic Beanstalk
-        uses: einaregilsson/beanstalk-deploy@v20
-        with:
-          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          application_name: trendigle-api
-          environment_name: trendigle-api-env
-          version_label: ${{ github.sha }}
-          region: us-east-1
-          deployment_package: deploy.zip
+    - name: Deploy to Elastic Beanstalk
+      uses: einaregilsson/beanstalk-deploy@v21
+      with:
+        aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        application_name: ${{ secrets.EB_APP_NAME }}
+        environment_name: ${{ secrets.EB_ENV_NAME }}
+        region: ${{ secrets.AWS_REGION }}
+        version_label: ${{ github.sha }}
+        deployment_package: deploy.zip
